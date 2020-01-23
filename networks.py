@@ -48,8 +48,6 @@ class ActorCriticModel(tf.keras.Model):
         return logits, value
 
     def get_action(self, inputs):
-        # Action selection needs to be outside of the call() function because we don't do backprop through it
-        # predict_on_batch is faster than call in TF 2.0
         logits, value = self.predict_on_batch(inputs)
         action = self.sampler.predict_on_batch(logits)
 
