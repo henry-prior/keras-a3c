@@ -4,7 +4,6 @@ import ray
 import numpy as np
 import gym
 import os
-from queue import Queue
 from typing import Union
 
 from networks import Actor, Critic, ActorCriticModel, ActorLoss
@@ -30,8 +29,6 @@ class A3CRunner:
         self.learning_rate = learning_rate
         self.discount_factor = discount_factor
 
-        self.queue = Queue()
-
         actor = Actor(action_space_size=env.action_space.n)
         critic = Critic()
         self.global_model = ActorCriticModel(actor, critic)
@@ -56,8 +53,7 @@ class A3CRunner:
         return episode_reward
 
     def train(self):
-        queue = None
-        agents = [SingleAgent(self.env_name, self.save_dir, queue,
+        agents = [SingleAgent(self.env_name, self.save_dir,
         self.entropy_weight, self.discount_factor, i) for i in range(self.threads)]
 
         parameters = self.global_model.get_weights()

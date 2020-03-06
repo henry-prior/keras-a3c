@@ -3,7 +3,6 @@ import ray
 import threading
 import os
 import numpy as np
-from queue import Queue
 
 from networks import Actor, Critic, ActorCriticModel, ActorLoss, ActorCriticLoss
 
@@ -39,7 +38,6 @@ class SingleAgent(object):
     def __init__(self,
                  env_name: str,
                  save_dir: str,
-                 queue: Queue,
                  entropy_weight: float,
                  discount_factor: float,
                  id: int):
@@ -49,8 +47,6 @@ class SingleAgent(object):
         self.id = id
 
         self.save_dir = save_dir
-
-        self.queue = queue
 
         self.discount_factor = discount_factor
 
@@ -67,7 +63,6 @@ class SingleAgent(object):
     def run(self, global_weights, updates=250, batch_size=64):
         import tensorflow as tf
         self.local_model.set_weights(global_weights)
-        #storage = Storage(self.env)
         actions = np.empty((batch_size,), dtype=np.int32)
         rewards, dones, values = np.empty((3, batch_size))
         observations = np.empty((batch_size,) + self.env.observation_space.shape)
