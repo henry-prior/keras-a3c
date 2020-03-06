@@ -1,11 +1,12 @@
 import tensorflow as tf
 import logging
+import ray
 import numpy as np
 import gym
-import threading
+import os
 from queue import Queue
 from typing import Union
-from scipy.signal import lfilter
+
 from networks import Actor, Critic, ActorCriticModel, ActorLoss
 from single_agent import SingleAgent
 
@@ -21,6 +22,8 @@ class A3CRunner:
         self.env_name = env_name
         env = gym.make(env_name)
 
+        self.save_dir = os.path.expanduser('~/keras-a3c/models/')
+
         self.threads = threads
         self.EPISODES = episodes
         self.entropy_weight = entropy_weight
@@ -35,14 +38,14 @@ class A3CRunner:
 
         self.actor_loss = ActorLoss(entropy_weight)
 
-        self.global_model.compile(optimizer=tf.keras.optimizers.Adam(lr=learning_rate),
-                                  loss=[self.actor_loss, tf.keras.losses.MeanSquaredError()],
-                                  loss_weights = [1., 0.5])
+        self.optimizer = tf.keras.optimizers.Adam(lr=learning_rate)
 
         self.global_model(tf.convert_to_tensor(np.random.random((1, env.observation_space.shape[0]))))
 
     def test(self, render=True):
         env = gym.make(self.env_name)
+        model_path = os.path.join(self.save_dir, 'model_{}.h5'.format(self.env_name))
+        self.global_model.load_weights(model_path)
         obs, done, episode_reward = env.reset(), False, 0
         while not done:
             action, _ = self.global_model.get_action(obs[None, :])
@@ -53,20 +56,20 @@ class A3CRunner:
         return episode_reward
 
     def train(self):
-        queue = Queue()
+        queue = None
+        agents = [SingleAgent(self.env_name, self.save_dir, queue,
+        self.entropy_weight, self.discount_factor, i) for i in range(self.threads)]
 
-        agents = [SingleAgent(self.global_model, self.env_name, queue, self.EPISODES,
-        self.entropy_weight, self.learning_rate, self.discount_factor) for _ in range(self.threads)]
+        parameters = self.global_model.get_weights()
+        gradient_list = [agent.run.remote(parameters) for agent in agents]
+        episode = 0
 
-        for agent in agents:
-            agent.start()
+        while episode < self.EPISODES:
+            done_id, gradient_list = ray.wait(gradient_list)
+            episode += 1
 
-        moving_average_rewards = []  # record episode reward to plot
-        while True:
-            reward = queue.get()
-            if reward is not None:
-                moving_average_rewards.append(reward)
-            else:
-                break
+            gradients, id = ray.get(done_id)[0]
 
-        [a.join() for a in agents]
+            self.optimizer.apply_gradients(zip(gradients, self.global_model.trainable_weights))
+            parameters = self.global_model.get_weights()
+            gradient_list.extend([agents[id].run.remote(parameters)])

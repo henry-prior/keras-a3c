@@ -2,8 +2,32 @@ import tensorflow as tf
 import numpy as np
 
 class CategoricalSampler(tf.keras.Model):
-  def call(self, logits):
-    return tf.squeeze(tf.random.categorical(logits, 1), axis=-1)
+    def call(self, logits):
+      return tf.squeeze(tf.random.categorical(logits, 1), axis=-1)
+
+class ActorCriticLoss(tf.keras.losses.Loss):
+    def __init__(self,
+                 entropy_weight: float,
+                 name: str = None):
+        super(ActorCriticLoss, self).__init__(name=name)
+        self.entropy_weight = entropy_weight
+
+    def call(self, y_true, y_pred):
+        actions, advantages = tf.split(y_true, 2, axis=-1)
+        logits, values = y_pred[:-1], y_pred[-1]
+
+        actions = tf.cast(actions, tf.int32)
+        advantages = tf.keras.backend.stop_gradient(advantages)
+
+        policy_loss_ce = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True)
+        policy_loss = policy_loss_ce(actions, logits, sample_weight=advantages)
+
+        pmf = tf.keras.activations.softmax(logits)
+        entropy_loss = tf.keras.losses.categorical_crossentropy(pmf, pmf)
+
+        value_loss = tf.square(advantages)
+
+        return 0.5 * value_loss + policy_loss - self.entropy_weight * entropy_loss
 
 class ActorLoss(tf.keras.losses.Loss):
     def __init__(self,
@@ -15,6 +39,7 @@ class ActorLoss(tf.keras.losses.Loss):
     def call(self, y_true, y_pred):
         actions, advantages = tf.split(y_true, 2, axis=-1)
         actions = tf.cast(actions, tf.int32)
+        advantages = tf.keras.backend.stop_gradient(advantages)
 
         policy_loss_ce = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True)
         policy_loss = policy_loss_ce(actions, y_pred, sample_weight=advantages)
@@ -30,8 +55,8 @@ class Actor(tf.keras.Model):
                  action_space_size: int,
                  name: str = None):
         super(Actor, self).__init__(name=name)
-        self.hidden_1 = tf.keras.layers.Dense(128, activation='relu')
-        self.hidden_2 = tf.keras.layers.Dense(128, activation='relu')
+        self.hidden_1 = tf.keras.layers.Dense(64, activation='relu')
+        self.hidden_2 = tf.keras.layers.Dense(64, activation='relu')
 
         self.logits = tf.keras.layers.Dense(action_space_size)
 
@@ -45,8 +70,8 @@ class Actor(tf.keras.Model):
 class Critic(tf.keras.Sequential):
     def __init__(self,
                  name: str = None):
-        hidden_1 = tf.keras.layers.Dense(128, activation='relu')
-        hidden_2 = tf.keras.layers.Dense(128, activation='relu')
+        hidden_1 = tf.keras.layers.Dense(64, activation='relu')
+        hidden_2 = tf.keras.layers.Dense(64, activation='relu')
         state_out = tf.keras.layers.Dense(1)
         super(Critic, self).__init__([hidden_1, hidden_2, state_out], name)
 
@@ -65,10 +90,11 @@ class ActorCriticModel(tf.keras.Model):
     def call(self, inputs):
         logits = self.actor_network(inputs)
         value = self.critic_network(inputs)
+        
         return logits, value
 
     def get_action(self, inputs):
-        logits, value = self(inputs) #self.predict_on_batch(inputs)
-        action = self.sampler(logits) #self.sampler.predict_on_batch(logits)
+        logits, value = self.predict_on_batch(inputs)
+        action = self.sampler.predict_on_batch(logits)
 
         return np.squeeze(action, axis=-1), np.squeeze(value, axis=-1)
