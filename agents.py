@@ -35,7 +35,7 @@ class A3CRunner:
 
         self.actor_loss = ActorLoss(entropy_weight)
 
-        self.optimizer = tf.keras.optimizers.Adam(lr=learning_rate)
+        self.optimizer = tf.keras.optimizers.RMSprop(lr=learning_rate)
 
         self.global_model(tf.convert_to_tensor(np.random.random((1, env.observation_space.shape[0]))))
 
@@ -53,7 +53,7 @@ class A3CRunner:
         return episode_reward
 
     def train(self):
-        agents = [SingleAgent(self.env_name, self.save_dir,
+        agents = [SingleAgent.remote(self.env_name, self.save_dir,
         self.entropy_weight, self.discount_factor, i) for i in range(self.threads)]
 
         parameters = self.global_model.get_weights()
@@ -69,3 +69,6 @@ class A3CRunner:
             self.optimizer.apply_gradients(zip(gradients, self.global_model.trainable_weights))
             parameters = self.global_model.get_weights()
             gradient_list.extend([agents[id].run.remote(parameters)])
+
+        model_path = os.path.join(self.save_dir, 'model_{}.h5'.format(self.env_name))
+        self.global_model.save_weights(model_path)
