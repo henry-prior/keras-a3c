@@ -75,5 +75,7 @@ class ActorCriticModel(tf.keras.Model):
     def get_action(self, inputs):
         logits, value = self.predict(inputs)
         action = self.sampler.predict(logits)
+        #print(logits)
+        #print(action)
 
-        return np.squeeze(action, axis=-1), np.squeeze(value, axis=-1)
+        return action.item(), np.squeeze(value, axis=-1)
