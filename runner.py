@@ -1,5 +1,4 @@
 from agents import A3CRunner
-#from networks import *
 import ray
 
 if __name__ == '__main__':
