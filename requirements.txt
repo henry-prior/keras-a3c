@@ -1,5 +1,5 @@
 numpy==1.18.1
-tensorflow==2.0.1
+tensorflow==2.0.3
 gym==0.15.4
 ray
 scipy
